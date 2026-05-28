@@ -1,0 +1,46 @@
+# Copy this file to .github/workflows/sync.yml to activate the daily cron.
+# (The agent's token lacks the `workflow` scope, so it can't create this path itself.)
+
+name: Sync stargazers
+
+on:
+  schedule:
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-stargazers
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/sync.py
+
+      - name: Commit changes (if any)
+        run: |
+          if [[ -n "$(git status --porcelain stargazers.csv seen.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add stargazers.csv seen.json
+            git commit -m "sync: $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          else
+            echo "No changes"
+          fi
